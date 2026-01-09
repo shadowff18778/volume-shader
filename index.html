@@ -115,10 +115,12 @@
         
         // --- LOGIQUE DE DÉTECTION ET OPTIMISATION ---
         const isHuawei = /huawei/i.test(navigator.userAgent);
-        const dpr = isHuawei ? 1.1 : Math.min(window.devicePixelRatio, 2.0);
-        const raySteps = isHuawei ? 80 : 140; // Plus de détails sur PC, plus de fluidité sur Huawei
         
-        document.getElementById('mode-tag').innerText = isHuawei ? "Mode Huawei : Optimisé Turbo" : "Mode Standard : Ultra Détails";
+        // On aligne le Huawei sur le mode "Ultra" (DPR et Steps élevés)
+        const dpr = isHuawei ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2.0);
+        const raySteps = 140; // On met 140 partout pour la qualité maximale
+        
+        document.getElementById('mode-tag').innerText = isHuawei ? "Mode Huawei : Qualité Ultra + Turbo Fix" : "Mode Standard : Ultra Détails";
 
         let mx = 0, my = 0, mx1 = 0, my1 = 0;
         let ml = 0, lastN = 0;
@@ -154,7 +156,7 @@
             void main() {
                 vec3 dir = normalize(forward + right * vUv.x * aspectX + up * vUv.y * aspectY);
                 vec3 p;
-                float t = 0.015 * len;
+                float t = 0.012 * len;
                 float v = 0.0;
                 bool hit = false;
 
@@ -165,15 +167,16 @@
                         hit = true;
                         break;
                     }
-                    // Progression adaptative : plus rapide sur mobile
-                    t += ${isHuawei ? '0.025' : '0.018'} * len; 
+                    // On garde une progression adaptative pour ne pas tuer le FPS
+                    t += ${isHuawei ? '0.02' : '0.015'} * len; 
                     if(t > 4.8 * len) break;
                 }
 
                 vec3 color = vec3(0.01, 0.01, 0.02);
                 
                 if(hit) {
-                    float e = ${isHuawei ? '0.008' : '0.004'} * len;
+                    // Précision des normales augmentée (plus petit e = plus de détails)
+                    float e = 0.004 * len;
                     vec3 n = normalize(vec3(
                         kernal(p - vec3(e, 0, 0)) - v,
                         kernal(p - vec3(0, e, 0)) - v,
@@ -183,12 +186,12 @@
                     vec3 lightDir = normalize(vec3(0.5, 0.8, 0.6));
                     float diff = max(0.05, dot(n, lightDir));
                     
-                    // Ombrage plus doux sur les appareils puissants
                     vec3 baseCol = vec3(0.0, 0.65, 1.0);
                     color = mix(vec3(0.0), baseCol, diff + 0.1);
                     
-                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), ${isHuawei ? '15.0' : '30.0'});
-                    color += vec3(0.7, 0.9, 1.0) * spec;
+                    // Spéculaire fin et brillant
+                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), 35.0);
+                    color += vec3(0.8, 0.95, 1.0) * spec;
                 }
                 gl_FragColor = vec4(color, 1.0);
             }`;
