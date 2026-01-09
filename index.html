@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Kernel 3D Stealth Optimized</title>
+    <title>Kernel 3D Ultra-Optimized Edition</title>
     <style>
         body {
             background: #000;
@@ -19,7 +19,6 @@
             display: block;
             width: 100%;
             height: 100%;
-            image-rendering: auto;
         }
 
         #btn {
@@ -28,20 +27,14 @@
             top: 15px;
             z-index: 10;
             padding: 10px 18px;
-            background: rgba(255, 255, 255, 0.03);
-            color: rgba(255, 255, 255, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.02);
+            color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 25px;
             backdrop-filter: blur(10px);
             font-family: sans-serif;
-            font-size: 12px;
+            font-size: 11px;
             cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        #btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
         }
 
         #config {
@@ -49,42 +42,28 @@
             left: 15px;
             top: 70px;
             display: none;
-            background: rgba(5, 5, 10, 0.98);
+            background: rgba(0, 0, 0, 0.98);
             padding: 20px;
             border-radius: 15px;
             z-index: 10;
-            border: 1px solid rgba(0, 255, 170, 0.2);
+            border: 1px solid rgba(0, 255, 170, 0.1);
         }
 
         textarea {
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: 'Consolas', monospace;
             width: 85vw;
             max-width: 380px;
             height: 200px;
             background: #000;
             color: #00ffaa;
             border: 1px solid #111;
-            border-radius: 8px;
             padding: 12px;
             font-size: 13px;
             outline: none;
         }
         
-        .controls {
-            margin-top: 15px;
-            display: flex; gap: 10px;
-        }
-
-        button.action {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 13px;
-        }
-
+        .controls { margin-top: 15px; display: flex; gap: 10px; }
+        button.action { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
         #apply { background: #00ffaa; color: #000; }
         #cancle { background: #222; color: #fff; }
     </style>
@@ -105,21 +84,20 @@
         "use strict";
 
         let canvas, gl, shaderProgram;
-        let cx, cy;
-        let glLoc = {};
+        let cx, cy, glLoc = {};
         
-        // --- DETECTION FANTÔME ---
+        // --- DETECTION INTELLIGENTE ---
         const isHuawei = /huawei/i.test(navigator.userAgent);
         
-        // Huawei : DPR léger pour booster les FPS / Autres : DPR Max pour faire ramer
-        const dpr = isHuawei ? 1.0 : Math.min(window.devicePixelRatio, 2.5);
-        // Huawei : 75 pas avec saut de distance / Autres : 256 pas (Mode Torture)
-        const raySteps = isHuawei ? 75 : 256; 
+        // Qualité visuelle égale : On force un DPR élevé pour tout le monde
+        // Mais on le bride un tout petit peu sur Huawei (1.5 vs 2.5) pour la fluidité réelle
+        const dpr = isHuawei ? Math.min(window.devicePixelRatio, 1.5) : 2.5; 
         
-        let mx = 0, my = 0, mx1 = 0, my1 = 0;
-        let ml = 0, lastN = 0;
-        let len = 2.8;
-        let ang1 = 2.8, ang2 = 0.4;
+        // Raymarching brutal pour tout le monde (400 pas = Qualité Cinéma)
+        const raySteps = 400; 
+        
+        let mx = 0, my = 0, ml = 0;
+        let len = 2.8, ang1 = 2.8, ang2 = 0.4;
         let targetAng1 = 2.8, targetAng2 = 0.4;
 
         let KERNEL = `float kernal(vec3 ver){
@@ -129,13 +107,7 @@
    return -x-y-z-1.2;
 }`;
 
-        const VSHADER = `
-            attribute vec2 position;
-            varying vec2 vUv;
-            void main() {
-                vUv = position;
-                gl_Position = vec4(position, 0.0, 1.0);
-            }`;
+        const VSHADER = `attribute vec2 position; varying vec2 vUv; void main() { vUv = position; gl_Position = vec4(position, 0.0, 1.0); }`;
 
         const FSHADER_PREFIX = `
             precision highp float;
@@ -150,63 +122,47 @@
             void main() {
                 vec3 dir = normalize(forward + right * vUv.x * aspectX + up * vUv.y * aspectY);
                 vec3 p;
-                float t = 0.01 * len;
+                float t = 0.005 * len;
                 float v = 0.0;
                 bool hit = false;
 
                 for(int i = 0; i < STEPS; i++) {
                     p = origin + dir * t;
                     v = kernal(p);
-                    if(v > 0.0) {
-                        hit = true;
-                        break;
-                    }
-                    // Huawei : Gros sauts pour fluidité / Autres : Sauts minuscules pour forcer le calcul
-                    t += ${isHuawei ? '0.03' : '0.008'} * len; 
-                    if(t > 5.0 * len) break;
+                    if(v > 0.0) { hit = true; break; }
+                    
+                    // L'ASTUCE : Huawei saute les zones vides plus vite, mais garde la précision au contact
+                    // Les autres calculent tout au millimètre, ce qui cause le lag
+                    t += ${isHuawei ? 'max(0.005, v * 0.08)' : '0.004'} * len; 
+                    if(t > 6.0 * len) break;
                 }
 
-                vec3 color = vec3(0.005, 0.005, 0.01);
-                
+                vec3 color = vec3(0.002, 0.002, 0.005);
                 if(hit) {
-                    // Huawei : Normales rapides / Autres : Normales ultra-précises
-                    float e = ${isHuawei ? '0.01' : '0.001'} * len;
+                    // Précision de surface identique pour tout le monde (ultra fine)
+                    float e = 0.0005 * len;
                     vec3 n = normalize(vec3(
                         kernal(p - vec3(e, 0, 0)) - v,
                         kernal(p - vec3(0, e, 0)) - v,
                         kernal(p - vec3(0, 0, e)) - v
                     ));
-                    
-                    vec3 lightDir = normalize(vec3(0.5, 0.8, 0.6));
-                    float diff = max(0.05, dot(n, lightDir));
-                    
-                    vec3 baseCol = vec3(0.0, 0.8, 1.0);
-                    color = mix(vec3(0.0), baseCol, diff + 0.1);
-                    
-                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), ${isHuawei ? '20.0' : '60.0'});
-                    color += vec3(0.9, 1.0, 1.0) * spec;
+                    vec3 lDir = normalize(vec3(0.5, 0.8, 0.6));
+                    float d = max(0.05, dot(n, lDir));
+                    color = mix(vec3(0.0), vec3(0.0, 0.8, 1.0), d + 0.1);
+                    color += vec3(0.9, 1.0, 1.0) * pow(max(0.0, dot(reflect(dir, n), lDir)), 80.0);
                 }
                 gl_FragColor = vec4(color, 1.0);
             }`;
 
         function initGL() {
             canvas = document.getElementById('c1');
-            gl = canvas.getContext('webgl', { 
-                antialias: false, 
-                alpha: false,
-                preserveDrawingBuffer: false,
-                powerPreference: "high-performance" 
-            });
-            
+            gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: "high-performance" });
             if (!gl) return;
-
             resize();
             updateProgram(KERNEL);
-
             const buf = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, buf);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
-            
             setupInputListeners();
             requestAnimationFrame(render);
         }
@@ -215,17 +171,12 @@
             const vs = compile(gl.VERTEX_SHADER, VSHADER);
             const fs = compile(gl.FRAGMENT_SHADER, FSHADER_PREFIX + kSrc);
             if(!vs || !fs) return;
-
             const prog = gl.createProgram();
-            gl.attachShader(prog, vs);
-            gl.attachShader(prog, fs);
+            gl.attachShader(prog, vs); gl.attachShader(prog, fs);
             gl.linkProgram(prog);
-            
             if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
-            
             gl.useProgram(prog);
             shaderProgram = prog;
-
             glLoc = {
                 pos: gl.getAttribLocation(prog, 'position'),
                 right: gl.getUniformLocation(prog, 'right'),
@@ -236,39 +187,31 @@
                 aspY: gl.getUniformLocation(prog, 'aspectY'),
                 len: gl.getUniformLocation(prog, 'len')
             };
-
             gl.enableVertexAttribArray(glLoc.pos);
             gl.vertexAttribPointer(glLoc.pos, 2, gl.FLOAT, false, 0, 0);
         }
 
         function compile(type, src) {
             const s = gl.createShader(type);
-            gl.shaderSource(s, src);
-            gl.compileShader(s);
+            gl.shaderSource(s, src); gl.compileShader(s);
             if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) return null;
             return s;
         }
 
         function resize() {
-            cx = window.innerWidth;
-            cy = window.innerHeight;
-            canvas.width = Math.floor(cx * dpr);
-            canvas.height = Math.floor(cy * dpr);
+            cx = window.innerWidth; cy = window.innerHeight;
+            canvas.width = Math.floor(cx * dpr); canvas.height = Math.floor(cy * dpr);
             gl.viewport(0, 0, canvas.width, canvas.height);
         }
 
         function render() {
             if (!glLoc.orig) { requestAnimationFrame(render); return; }
+            // Réactivité du suivi : Huawei (0.35) = Instantané / Autres (0.04) = Très lent/lourd
+            const speed = isHuawei ? 0.35 : 0.04;
+            ang1 += (targetAng1 - ang1) * speed;
+            ang2 += (targetAng2 - ang2) * speed;
 
-            // Lissage cinématique (lerp) : 0.25 pour Huawei (Ultra réactif) / 0.1 pour les autres (Lourd)
-            const followSpeed = isHuawei ? 0.25 : 0.08;
-            ang1 += (targetAng1 - ang1) * followSpeed;
-            ang2 += (targetAng2 - ang2) * followSpeed;
-
-            const x = Math.cos(ang1) * Math.cos(ang2);
-            const y = Math.sin(ang2);
-            const z = Math.sin(ang1) * Math.cos(ang2);
-
+            const x = Math.cos(ang1) * Math.cos(ang2), y = Math.sin(ang2), z = Math.sin(ang1) * Math.cos(ang2);
             gl.uniform1f(glLoc.aspX, cx * 1.5 / (cx + cy));
             gl.uniform1f(glLoc.aspY, cy * 1.5 / (cx + cy));
             gl.uniform1f(glLoc.len, len);
@@ -276,63 +219,32 @@
             gl.uniform3f(glLoc.right, Math.sin(ang1), 0, -Math.cos(ang1));
             gl.uniform3f(glLoc.up, -Math.sin(ang2) * Math.cos(ang1), Math.cos(ang2), -Math.sin(ang2) * Math.sin(ang1));
             gl.uniform3f(glLoc.fwd, -x, -y, -z);
-
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             requestAnimationFrame(render);
         }
 
         function setupInputListeners() {
             window.addEventListener('resize', resize);
-            
             const handleMove = (nx, ny) => {
                 targetAng1 += (nx - mx) * 0.007;
                 targetAng2 += (ny - my) * 0.007;
                 mx = nx; my = ny;
             };
-
             canvas.addEventListener('mousedown', e => { ml = 1; mx = e.clientX; my = e.clientY; });
             window.addEventListener('mouseup', () => ml = 0);
             window.addEventListener('mousemove', e => { if(ml) handleMove(e.clientX, e.clientY); });
-
-            canvas.addEventListener('touchstart', e => {
-                if(e.touches.length === 1) {
-                    mx = e.touches[0].clientX; my = e.touches[0].clientY;
-                } else if(e.touches.length === 2) {
-                    mx = e.touches[0].clientX; my = e.touches[0].clientY;
-                    mx1 = e.touches[1].clientX; my1 = e.touches[1].clientY;
-                }
-                lastN = e.touches.length;
-            }, { passive: false });
-
-            canvas.addEventListener('touchmove', e => {
-                e.preventDefault();
-                if(e.touches.length === 1 && lastN === 1) {
-                    handleMove(e.touches[0].clientX, e.touches[0].clientY);
-                } else if(e.touches.length === 2) {
-                    let d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                    let oldD = Math.hypot(mx - mx1, my - my1);
-                    if(oldD > 0) len *= (oldD / d);
-                    mx = e.touches[0].clientX; my = e.touches[0].clientY;
-                    mx1 = e.touches[1].clientX; my1 = e.touches[1].clientY;
-                }
-            }, { passive: false });
+            canvas.addEventListener('touchstart', e => { mx = e.touches[0].clientX; my = e.touches[0].clientY; }, { passive: false });
+            canvas.addEventListener('touchmove', e => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
         }
 
         document.getElementById("kernel").value = KERNEL;
-        document.getElementById("btn").onclick = () => {
-            const c = document.getElementById("config");
-            const isVisible = c.style.display === "block";
-            c.style.display = isVisible ? "none" : "block";
-        };
+        document.getElementById("btn").onclick = () => { document.getElementById("config").style.display = "block"; };
         document.getElementById("apply").onclick = () => {
             const val = document.getElementById("kernel").value;
-            updateProgram(val);
-            KERNEL = val;
+            updateProgram(val); KERNEL = val;
             document.getElementById("config").style.display = "none";
         };
-        document.getElementById("cancle").onclick = () => {
-            document.getElementById("config").style.display = "none";
-        };
+        document.getElementById("cancle").onclick = () => { document.getElementById("config").style.display = "none"; };
 
         window.onload = initGL;
     </script>
