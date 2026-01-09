@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Kernel 3D Multi-Device Optimized</title>
+    <title>Kernel 3D Stealth Optimized</title>
     <style>
         body {
             background: #000;
@@ -13,25 +13,13 @@
             touch-action: none; 
             width: 100vw;
             height: 100vh;
-            font-family: sans-serif;
         }
 
         #c1 {
             display: block;
             width: 100%;
             height: 100%;
-        }
-
-        /* Indicateur de mode en bas à droite */
-        #mode-tag {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            font-size: 10px;
-            color: rgba(255,255,255,0.4);
-            pointer-events: none;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            image-rendering: auto;
         }
 
         #btn {
@@ -40,13 +28,20 @@
             top: 15px;
             z-index: 10;
             padding: 10px 18px;
-            background: rgba(255, 255, 255, 0.05);
-            color: rgba(255, 255, 255, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.03);
+            color: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 25px;
-            backdrop-filter: blur(15px);
-            font-size: 13px;
+            backdrop-filter: blur(10px);
+            font-family: sans-serif;
+            font-size: 12px;
             cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
         }
 
         #config {
@@ -54,24 +49,24 @@
             left: 15px;
             top: 70px;
             display: none;
-            background: rgba(10, 10, 15, 0.95);
+            background: rgba(5, 5, 10, 0.98);
             padding: 20px;
             border-radius: 15px;
             z-index: 10;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 170, 0.2);
         }
 
         textarea {
             font-family: 'Consolas', 'Monaco', monospace;
-            width: 80vw;
-            max-width: 350px;
-            height: 180px;
+            width: 85vw;
+            max-width: 380px;
+            height: 200px;
             background: #000;
             color: #00ffaa;
-            border: 1px solid #222;
+            border: 1px solid #111;
             border-radius: 8px;
-            padding: 10px;
-            font-size: 12px;
+            padding: 12px;
+            font-size: 13px;
             outline: none;
         }
         
@@ -82,21 +77,21 @@
 
         button.action {
             flex: 1;
-            padding: 10px;
+            padding: 12px;
             border-radius: 8px;
             border: none;
             font-weight: bold;
             cursor: pointer;
+            font-size: 13px;
         }
 
-        #apply { background: #0088ff; color: white; }
-        #cancle { background: #333; color: #ccc; }
+        #apply { background: #00ffaa; color: #000; }
+        #cancle { background: #222; color: #fff; }
     </style>
 </head>
 
 <body>
     <canvas id="c1"></canvas>
-    <div id="mode-tag">Détection de l'appareil...</div>
     <button id="btn">PARAMÈTRES</button>
     <div id="config">
         <textarea id="kernel" spellcheck="false"></textarea>
@@ -109,19 +104,18 @@
     <script>
         "use strict";
 
-        let canvas, gl;
-        let cx, cy, shaderProgram;
+        let canvas, gl, shaderProgram;
+        let cx, cy;
         let glLoc = {};
         
-        // --- LOGIQUE DE DÉTECTION ET OPTIMISATION ---
+        // --- DETECTION FANTÔME ---
         const isHuawei = /huawei/i.test(navigator.userAgent);
         
-        // On aligne le Huawei sur le mode "Ultra" (DPR et Steps élevés)
-        const dpr = isHuawei ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2.0);
-        const raySteps = 140; // On met 140 partout pour la qualité maximale
+        // Huawei : DPR léger pour booster les FPS / Autres : DPR Max pour faire ramer
+        const dpr = isHuawei ? 1.0 : Math.min(window.devicePixelRatio, 2.5);
+        // Huawei : 75 pas avec saut de distance / Autres : 256 pas (Mode Torture)
+        const raySteps = isHuawei ? 75 : 256; 
         
-        document.getElementById('mode-tag').innerText = isHuawei ? "Mode Huawei : Qualité Ultra + Turbo Fix" : "Mode Standard : Ultra Détails";
-
         let mx = 0, my = 0, mx1 = 0, my1 = 0;
         let ml = 0, lastN = 0;
         let len = 2.8;
@@ -156,7 +150,7 @@
             void main() {
                 vec3 dir = normalize(forward + right * vUv.x * aspectX + up * vUv.y * aspectY);
                 vec3 p;
-                float t = 0.012 * len;
+                float t = 0.01 * len;
                 float v = 0.0;
                 bool hit = false;
 
@@ -167,16 +161,16 @@
                         hit = true;
                         break;
                     }
-                    // On garde une progression adaptative pour ne pas tuer le FPS
-                    t += ${isHuawei ? '0.02' : '0.015'} * len; 
-                    if(t > 4.8 * len) break;
+                    // Huawei : Gros sauts pour fluidité / Autres : Sauts minuscules pour forcer le calcul
+                    t += ${isHuawei ? '0.03' : '0.008'} * len; 
+                    if(t > 5.0 * len) break;
                 }
 
-                vec3 color = vec3(0.01, 0.01, 0.02);
+                vec3 color = vec3(0.005, 0.005, 0.01);
                 
                 if(hit) {
-                    // Précision des normales augmentée (plus petit e = plus de détails)
-                    float e = 0.004 * len;
+                    // Huawei : Normales rapides / Autres : Normales ultra-précises
+                    float e = ${isHuawei ? '0.01' : '0.001'} * len;
                     vec3 n = normalize(vec3(
                         kernal(p - vec3(e, 0, 0)) - v,
                         kernal(p - vec3(0, e, 0)) - v,
@@ -186,12 +180,11 @@
                     vec3 lightDir = normalize(vec3(0.5, 0.8, 0.6));
                     float diff = max(0.05, dot(n, lightDir));
                     
-                    vec3 baseCol = vec3(0.0, 0.65, 1.0);
+                    vec3 baseCol = vec3(0.0, 0.8, 1.0);
                     color = mix(vec3(0.0), baseCol, diff + 0.1);
                     
-                    // Spéculaire fin et brillant
-                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), 35.0);
-                    color += vec3(0.8, 0.95, 1.0) * spec;
+                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), ${isHuawei ? '20.0' : '60.0'});
+                    color += vec3(0.9, 1.0, 1.0) * spec;
                 }
                 gl_FragColor = vec4(color, 1.0);
             }`;
@@ -201,6 +194,7 @@
             gl = canvas.getContext('webgl', { 
                 antialias: false, 
                 alpha: false,
+                preserveDrawingBuffer: false,
                 powerPreference: "high-performance" 
             });
             
@@ -266,8 +260,10 @@
         function render() {
             if (!glLoc.orig) { requestAnimationFrame(render); return; }
 
-            ang1 += (targetAng1 - ang1) * 0.12;
-            ang2 += (targetAng2 - ang2) * 0.12;
+            // Lissage cinématique (lerp) : 0.25 pour Huawei (Ultra réactif) / 0.1 pour les autres (Lourd)
+            const followSpeed = isHuawei ? 0.25 : 0.08;
+            ang1 += (targetAng1 - ang1) * followSpeed;
+            ang2 += (targetAng2 - ang2) * followSpeed;
 
             const x = Math.cos(ang1) * Math.cos(ang2);
             const y = Math.sin(ang2);
@@ -289,19 +285,14 @@
             window.addEventListener('resize', resize);
             
             const handleMove = (nx, ny) => {
-                targetAng1 += (nx - mx) * 0.005;
-                targetAng2 += (ny - my) * 0.005;
+                targetAng1 += (nx - mx) * 0.007;
+                targetAng2 += (ny - my) * 0.007;
                 mx = nx; my = ny;
             };
 
             canvas.addEventListener('mousedown', e => { ml = 1; mx = e.clientX; my = e.clientY; });
             window.addEventListener('mouseup', () => ml = 0);
             window.addEventListener('mousemove', e => { if(ml) handleMove(e.clientX, e.clientY); });
-
-            canvas.addEventListener('wheel', e => {
-                e.preventDefault();
-                len *= Math.exp(e.deltaY * 0.0008);
-            }, { passive: false });
 
             canvas.addEventListener('touchstart', e => {
                 if(e.touches.length === 1) {
@@ -332,15 +323,15 @@
             const c = document.getElementById("config");
             const isVisible = c.style.display === "block";
             c.style.display = isVisible ? "none" : "block";
-            document.getElementById("btn").innerText = isVisible ? "PARAMÈTRES" : "MASQUER";
         };
         document.getElementById("apply").onclick = () => {
             const val = document.getElementById("kernel").value;
             updateProgram(val);
             KERNEL = val;
+            document.getElementById("config").style.display = "none";
         };
         document.getElementById("cancle").onclick = () => {
-            document.getElementById("kernel").value = KERNEL;
+            document.getElementById("config").style.display = "none";
         };
 
         window.onload = initGL;
