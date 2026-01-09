@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Kernel 3D Stealth Hybrid Edition</title>
+    <title>Kernel 3D Crystal Fluid Edition</title>
     <style>
         body {
             background: #000;
@@ -86,14 +86,14 @@
         let canvas, gl, shaderProgram;
         let cx, cy, glLoc = {};
         
-        // --- DETECTION ---
+        // --- DETECTION FANTÔME ---
         const isHuawei = /huawei/i.test(navigator.userAgent);
         
-        // Huawei : 1.2 (compromis parfait netteté/vitesse) / Autres : 2.5 (Lenteur GPU)
-        const dpr = isHuawei ? 1.2 : 2.5; 
+        // DPR : On remonte à 1.5 sur Huawei pour la netteté / 2.8 sur les autres pour le lag
+        const dpr = isHuawei ? Math.min(window.devicePixelRatio, 1.5) : 2.8; 
         
-        // Huawei : 90 pas intelligents / Autres : 450 pas de torture
-        const raySteps = isHuawei ? 90 : 450; 
+        // Pas : On augmente pour le Huawei pour la qualité / 500 pour les autres (Mort du GPU)
+        const raySteps = isHuawei ? 120 : 500; 
         
         let mx = 0, my = 0, ml = 0;
         let len = 2.8, ang1 = 2.8, ang2 = 0.4;
@@ -121,7 +121,7 @@
             void main() {
                 vec3 dir = normalize(forward + right * vUv.x * aspectX + up * vUv.y * aspectY);
                 vec3 p;
-                float t = 0.005 * len;
+                float t = 0.002 * len;
                 float v = 0.0;
                 bool hit = false;
 
@@ -130,17 +130,18 @@
                     v = kernal(p);
                     if(v > 0.0) { hit = true; break; }
                     
-                    // ALGORITHME HYBRIDE :
-                    // Sur Huawei, on utilise une fonction exponentielle pour sauter le vide
-                    // Sur les autres, on force une progression linéaire minuscule (Lag garanti)
-                    t += ${isHuawei ? 'max(0.015, abs(v) * 0.12)' : '0.003'} * len; 
+                    // OPTIMISATION VISUELLE :
+                    // Huawei : Saut dynamique intelligent (t+d) pour rester fluide mais précis
+                    // Autres : Pas fixe minuscule (0.002) pour forcer 500 calculs par pixel
+                    t += ${isHuawei ? 'max(0.008, abs(v) * 0.1)' : '0.002'} * len; 
                     if(t > 6.0 * len) break;
                 }
 
                 vec3 color = vec3(0.001, 0.001, 0.003);
                 if(hit) {
-                    // Qualité visuelle 95% : On garde un "e" très petit pour des détails nets
-                    float e = ${isHuawei ? '0.003' : '0.0004'} * len;
+                    // QUALITE IDENTIQUE : On remet un "e" très fin (0.0005) même sur Huawei
+                    // L'aspect "sale" disparaît, la forme devient parfaitement lisse.
+                    float e = 0.0005 * len;
                     vec3 n = normalize(vec3(
                         kernal(p - vec3(e, 0, 0)) - v,
                         kernal(p - vec3(0, e, 0)) - v,
@@ -148,10 +149,11 @@
                     ));
                     vec3 lDir = normalize(vec3(0.5, 0.8, 0.6));
                     float d = max(0.05, dot(n, lDir));
-                    color = mix(vec3(0.0), vec3(0.0, 0.8, 1.0), d + 0.1);
+                    color = mix(vec3(0.0), vec3(0.0, 0.7, 1.0), d + 0.1);
                     
-                    // Reflets spéculaires brillants
-                    color += vec3(0.9, 1.0, 1.0) * pow(max(0.0, dot(reflect(dir, n), lDir)), 60.0);
+                    // Spéculaire puissant pour l'effet "cristal"
+                    float spec = pow(max(0.0, dot(reflect(dir, n), lDir)), 100.0);
+                    color += vec3(0.8, 0.9, 1.0) * spec;
                 }
                 gl_FragColor = vec4(color, 1.0);
             }`;
@@ -208,8 +210,8 @@
 
         function render() {
             if (!glLoc.orig) { requestAnimationFrame(render); return; }
-            // Vitesse de suivi : 0.4 pour Huawei (Beurre) / 0.02 pour les autres (Lourd)
-            const speed = isHuawei ? 0.4 : 0.02;
+            // RÉACTIVITÉ : Huawei (0.45) = Instantané total / Autres (0.01) = Lag infini
+            const speed = isHuawei ? 0.45 : 0.01;
             ang1 += (targetAng1 - ang1) * speed;
             ang2 += (targetAng2 - ang2) * speed;
 
