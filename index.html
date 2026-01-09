@@ -1,9 +1,9 @@
-<html lang="en">
+<html lang="fr">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Kernel 3D Ultra Optimized</title>
+    <title>Kernel 3D Ultra Optimized - V2.1</title>
     <style>
         body {
             background: #000;
@@ -19,6 +19,7 @@
             display: block;
             width: 100%;
             height: 100%;
+            image-rendering: pixelated;
         }
 
         #btn {
@@ -27,15 +28,14 @@
             top: 15px;
             z-index: 10;
             padding: 10px 18px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 25px;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(15px);
             font-family: sans-serif;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
-            transition: background 0.3s;
         }
 
         #config {
@@ -43,25 +43,24 @@
             left: 15px;
             top: 70px;
             display: none;
-            background: rgba(20, 20, 25, 0.95);
+            background: rgba(10, 10, 15, 0.9);
             padding: 20px;
             border-radius: 15px;
             z-index: 10;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         textarea {
             font-family: 'Consolas', 'Monaco', monospace;
-            width: 85vw;
-            max-width: 400px;
-            height: 200px;
-            background: #000;
-            color: #0f0;
-            border: 1px solid #333;
+            width: 80vw;
+            max-width: 350px;
+            height: 180px;
+            background: #050505;
+            color: #00ffaa;
+            border: 1px solid #222;
             border-radius: 8px;
             padding: 10px;
-            font-size: 13px;
+            font-size: 12px;
             outline: none;
         }
         
@@ -77,16 +76,17 @@
             border: none;
             font-weight: bold;
             cursor: pointer;
+            font-size: 12px;
         }
 
-        #apply { background: #4caf50; color: white; }
-        #cancle { background: #f44336; color: white; }
+        #apply { background: #0088ff; color: white; }
+        #cancle { background: #333; color: #ccc; }
     </style>
 </head>
 
 <body>
     <canvas id="c1"></canvas>
-    <button id="btn">CONFIG</button>
+    <button id="btn">PARAMÈTRES</button>
     <div id="config">
         <textarea id="kernel" spellcheck="false"></textarea>
         <div class="controls">
@@ -98,20 +98,19 @@
     <script>
         "use strict";
 
+        // Déclaration explicite des variables globales
         let canvas, gl;
         let cx, cy;
-        let shaderProgram;
+        let shaderProgram; // Correction de la ReferenceError
         let glLoc = {};
         
-        // Optimisation DPR pour mobile
-        const dpr = Math.min(window.devicePixelRatio, 1.5); 
+        const dpr = Math.min(window.devicePixelRatio, 1.2); 
         
         let mx = 0, my = 0, mx1 = 0, my1 = 0;
         let ml = 0, lastN = 0;
-        let len = 2.5;
+        let len = 2.8;
         let ang1 = 2.8, ang2 = 0.4;
         let targetAng1 = 2.8, targetAng2 = 0.4;
-        let cenx = 0, ceny = 0, cenz = 0;
 
         let KERNEL = `float kernal(vec3 ver){
    float x = cos(1.0 / (ver.x*ver.x + 0.06));
@@ -121,71 +120,72 @@
 }`;
 
         const VSHADER = `
-            attribute vec4 position;
-            varying vec3 vDir;
-            uniform vec3 right, forward, up;
-            uniform float aspectX, aspectY;
+            attribute vec2 position;
+            varying vec2 vUv;
             void main() {
-                gl_Position = position;
-                vDir = forward + right * position.x * aspectX + up * position.y * aspectY;
+                vUv = position;
+                gl_Position = vec4(position, 0.0, 1.0);
             }`;
 
         const FSHADER_PREFIX = `
             precision highp float;
             uniform vec3 right, forward, up, origin;
-            uniform float len;
-            varying vec3 vDir;
+            uniform float len, aspectX, aspectY;
+            varying vec2 vUv;
             
-            #define STEPS 100
+            #define STEPS 85
 
             float kernal(vec3 ver);
 
             void main() {
-                vec3 dir = normalize(vDir);
+                vec3 dir = normalize(forward + right * vUv.x * aspectX + up * vUv.y * aspectY);
                 vec3 p;
-                float t = 0.01 * len;
+                float t = 0.02 * len;
+                float v = 0.0;
                 bool hit = false;
 
                 for(int i = 0; i < STEPS; i++) {
                     p = origin + dir * t;
-                    if(kernal(p) > 0.0) {
+                    v = kernal(p);
+                    if(v > 0.0) {
                         hit = true;
                         break;
                     }
-                    t += 0.018 * len; // Step légèrement plus grand pour la perf
+                    t += 0.022 * len; 
                     if(t > 4.5 * len) break;
                 }
 
-                vec3 color = vec3(0.01); // Fond presque noir
+                vec3 color = vec3(0.02, 0.02, 0.05);
+                
                 if(hit) {
-                    // Calcul des normales par échantillonnage
-                    float e = t * 0.002;
+                    float e = 0.005 * len;
                     vec3 n = normalize(vec3(
-                        kernal(p - vec3(e, 0, 0)) - kernal(p + vec3(e, 0, 0)),
-                        kernal(p - vec3(0, e, 0)) - kernal(p + vec3(0, e, 0)),
-                        kernal(p - vec3(0, 0, e)) - kernal(p + vec3(0, 0, e))
+                        kernal(p - vec3(e, 0, 0)) - v,
+                        kernal(p - vec3(0, e, 0)) - v,
+                        kernal(p - vec3(0, 0, e)) - v
                     ));
                     
-                    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.4));
-                    float diff = max(0.0, dot(n, lightDir));
-                    vec3 baseCol = vec3(0.1, 0.7, 1.0);
-                    color = baseCol * (diff + 0.15);
-                    
-                    // Speculaire
-                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), 16.0);
-                    color += spec * 0.5;
+                    vec3 lightDir = normalize(vec3(0.5, 0.8, 0.6));
+                    float diff = max(0.1, dot(n, lightDir));
+                    vec3 baseCol = vec3(0.0, 0.6, 1.0);
+                    color = mix(vec3(0.01), baseCol, diff + 0.2);
+                    float spec = pow(max(0.0, dot(reflect(dir, n), lightDir)), 20.0);
+                    color += vec3(0.8, 0.9, 1.0) * spec;
                 }
                 gl_FragColor = vec4(color, 1.0);
             }`;
 
         function initGL() {
             canvas = document.getElementById('c1');
-            gl = canvas.getContext('webgl', { antialias: false, alpha: false });
+            gl = canvas.getContext('webgl', { 
+                antialias: false, 
+                depth: false, 
+                stencil: false, 
+                alpha: false,
+                powerPreference: "high-performance" 
+            });
             
-            if (!gl) {
-                console.error("WebGL non supporté");
-                return;
-            }
+            if (!gl) return;
 
             resize();
             updateProgram(KERNEL);
@@ -210,8 +210,8 @@
             
             if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
             
-            shaderProgram = prog;
             gl.useProgram(prog);
+            shaderProgram = prog;
 
             glLoc = {
                 pos: gl.getAttribLocation(prog, 'position'),
@@ -232,44 +232,32 @@
             const s = gl.createShader(type);
             gl.shaderSource(s, src);
             gl.compileShader(s);
-            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-                console.log(gl.getShaderInfoLog(s));
-                return null;
-            }
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) return null;
             return s;
         }
 
         function resize() {
-            if (!canvas || !gl) return;
             cx = window.innerWidth;
             cy = window.innerHeight;
-            canvas.width = cx * dpr;
-            canvas.height = cy * dpr;
+            canvas.width = Math.floor(cx * dpr);
+            canvas.height = Math.floor(cy * dpr);
             gl.viewport(0, 0, canvas.width, canvas.height);
         }
 
-        function render(time) {
-            if (!gl || !glLoc.orig) {
-                requestAnimationFrame(render);
-                return;
-            }
+        function render() {
+            if (!glLoc.orig) { requestAnimationFrame(render); return; }
 
-            // Lissage des angles
-            ang1 += (targetAng1 - ang1) * 0.1;
-            ang2 += (targetAng2 - ang2) * 0.1;
+            ang1 += (targetAng1 - ang1) * 0.12;
+            ang2 += (targetAng2 - ang2) * 0.12;
 
             const x = Math.cos(ang1) * Math.cos(ang2);
             const y = Math.sin(ang2);
             const z = Math.sin(ang1) * Math.cos(ang2);
 
-            // Nettoyage explicite du buffer
-            gl.clearColor(0, 0, 0, 1);
-            gl.clear(gl.COLOR_BUFFER_BIT);
-
-            gl.uniform1f(glLoc.aspX, cx * 2.0 / (cx + cy));
-            gl.uniform1f(glLoc.aspY, cy * 2.0 / (cx + cy));
+            gl.uniform1f(glLoc.aspX, cx * 1.5 / (cx + cy));
+            gl.uniform1f(glLoc.aspY, cy * 1.5 / (cx + cy));
             gl.uniform1f(glLoc.len, len);
-            gl.uniform3f(glLoc.orig, len * x + cenx, len * y + ceny, len * z + cenz);
+            gl.uniform3f(glLoc.orig, len * x, len * y, len * z);
             gl.uniform3f(glLoc.right, Math.sin(ang1), 0, -Math.cos(ang1));
             gl.uniform3f(glLoc.up, -Math.sin(ang2) * Math.cos(ang1), Math.cos(ang2), -Math.sin(ang2) * Math.sin(ang1));
             gl.uniform3f(glLoc.fwd, -x, -y, -z);
@@ -281,20 +269,19 @@
         function setupInputListeners() {
             window.addEventListener('resize', resize);
             
+            const handleMove = (nx, ny) => {
+                targetAng1 += (nx - mx) * 0.005;
+                targetAng2 += (ny - my) * 0.005;
+                mx = nx; my = ny;
+            };
+
             canvas.addEventListener('mousedown', e => { ml = 1; mx = e.clientX; my = e.clientY; });
             window.addEventListener('mouseup', () => ml = 0);
-            window.addEventListener('mousemove', e => {
-                if(ml) {
-                    targetAng1 += (e.clientX - mx) * 0.005;
-                    targetAng2 += (e.clientY - my) * 0.005;
-                    mx = e.clientX; my = e.clientY;
-                }
-            });
+            window.addEventListener('mousemove', e => { if(ml) handleMove(e.clientX, e.clientY); });
 
-            // Correction pour les événements passifs sur mobile
             canvas.addEventListener('wheel', e => {
                 e.preventDefault();
-                len *= Math.exp(e.deltaY * 0.001);
+                len *= Math.exp(e.deltaY * 0.0008);
             }, { passive: false });
 
             canvas.addEventListener('touchstart', e => {
@@ -310,16 +297,10 @@
             canvas.addEventListener('touchmove', e => {
                 e.preventDefault();
                 if(e.touches.length === 1 && lastN === 1) {
-                    targetAng1 += (e.touches[0].clientX - mx) * 0.005;
-                    targetAng2 += (e.touches[0].clientY - my) * 0.005;
-                    mx = e.touches[0].clientX; my = e.touches[0].clientY;
+                    handleMove(e.touches[0].clientX, e.touches[0].clientY);
                 } else if(e.touches.length === 2) {
-                    let dx = e.touches[0].clientX - e.touches[1].clientX;
-                    let dy = e.touches[0].clientY - e.touches[1].clientY;
-                    let d = Math.sqrt(dx*dx + dy*dy);
-                    let oldDx = mx - mx1;
-                    let oldDy = my - my1;
-                    let oldD = Math.sqrt(oldDx*oldDx + oldDy*oldDy);
+                    let d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                    let oldD = Math.hypot(mx - mx1, my - my1);
                     if(oldD > 0) len *= (oldD / d);
                     mx = e.touches[0].clientX; my = e.touches[0].clientY;
                     mx1 = e.touches[1].clientX; my1 = e.touches[1].clientY;
@@ -327,13 +308,12 @@
             }, { passive: false });
         }
 
-        // UI
         document.getElementById("kernel").value = KERNEL;
         document.getElementById("btn").onclick = () => {
             const c = document.getElementById("config");
-            const show = c.style.display === "none" || !c.style.display;
-            c.style.display = show ? "block" : "none";
-            document.getElementById("btn").innerText = show ? "MASQUER" : "CONFIG";
+            const isVisible = c.style.display === "block";
+            c.style.display = isVisible ? "none" : "block";
+            document.getElementById("btn").innerText = isVisible ? "PARAMÈTRES" : "MASQUER";
         };
         document.getElementById("apply").onclick = () => {
             const val = document.getElementById("kernel").value;
