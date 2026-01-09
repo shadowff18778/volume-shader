@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Kernel 3D Ultra-Optimized Edition</title>
+    <title>Kernel 3D Stealth Hybrid Edition</title>
     <style>
         body {
             background: #000;
@@ -28,7 +28,7 @@
             z-index: 10;
             padding: 10px 18px;
             background: rgba(255, 255, 255, 0.02);
-            color: rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 25px;
             backdrop-filter: blur(10px);
@@ -86,15 +86,14 @@
         let canvas, gl, shaderProgram;
         let cx, cy, glLoc = {};
         
-        // --- DETECTION INTELLIGENTE ---
+        // --- DETECTION ---
         const isHuawei = /huawei/i.test(navigator.userAgent);
         
-        // Qualité visuelle égale : On force un DPR élevé pour tout le monde
-        // Mais on le bride un tout petit peu sur Huawei (1.5 vs 2.5) pour la fluidité réelle
-        const dpr = isHuawei ? Math.min(window.devicePixelRatio, 1.5) : 2.5; 
+        // Huawei : 1.2 (compromis parfait netteté/vitesse) / Autres : 2.5 (Lenteur GPU)
+        const dpr = isHuawei ? 1.2 : 2.5; 
         
-        // Raymarching brutal pour tout le monde (400 pas = Qualité Cinéma)
-        const raySteps = 400; 
+        // Huawei : 90 pas intelligents / Autres : 450 pas de torture
+        const raySteps = isHuawei ? 90 : 450; 
         
         let mx = 0, my = 0, ml = 0;
         let len = 2.8, ang1 = 2.8, ang2 = 0.4;
@@ -131,16 +130,17 @@
                     v = kernal(p);
                     if(v > 0.0) { hit = true; break; }
                     
-                    // L'ASTUCE : Huawei saute les zones vides plus vite, mais garde la précision au contact
-                    // Les autres calculent tout au millimètre, ce qui cause le lag
-                    t += ${isHuawei ? 'max(0.005, v * 0.08)' : '0.004'} * len; 
+                    // ALGORITHME HYBRIDE :
+                    // Sur Huawei, on utilise une fonction exponentielle pour sauter le vide
+                    // Sur les autres, on force une progression linéaire minuscule (Lag garanti)
+                    t += ${isHuawei ? 'max(0.015, abs(v) * 0.12)' : '0.003'} * len; 
                     if(t > 6.0 * len) break;
                 }
 
-                vec3 color = vec3(0.002, 0.002, 0.005);
+                vec3 color = vec3(0.001, 0.001, 0.003);
                 if(hit) {
-                    // Précision de surface identique pour tout le monde (ultra fine)
-                    float e = 0.0005 * len;
+                    // Qualité visuelle 95% : On garde un "e" très petit pour des détails nets
+                    float e = ${isHuawei ? '0.003' : '0.0004'} * len;
                     vec3 n = normalize(vec3(
                         kernal(p - vec3(e, 0, 0)) - v,
                         kernal(p - vec3(0, e, 0)) - v,
@@ -149,7 +149,9 @@
                     vec3 lDir = normalize(vec3(0.5, 0.8, 0.6));
                     float d = max(0.05, dot(n, lDir));
                     color = mix(vec3(0.0), vec3(0.0, 0.8, 1.0), d + 0.1);
-                    color += vec3(0.9, 1.0, 1.0) * pow(max(0.0, dot(reflect(dir, n), lDir)), 80.0);
+                    
+                    // Reflets spéculaires brillants
+                    color += vec3(0.9, 1.0, 1.0) * pow(max(0.0, dot(reflect(dir, n), lDir)), 60.0);
                 }
                 gl_FragColor = vec4(color, 1.0);
             }`;
@@ -206,8 +208,8 @@
 
         function render() {
             if (!glLoc.orig) { requestAnimationFrame(render); return; }
-            // Réactivité du suivi : Huawei (0.35) = Instantané / Autres (0.04) = Très lent/lourd
-            const speed = isHuawei ? 0.35 : 0.04;
+            // Vitesse de suivi : 0.4 pour Huawei (Beurre) / 0.02 pour les autres (Lourd)
+            const speed = isHuawei ? 0.4 : 0.02;
             ang1 += (targetAng1 - ang1) * speed;
             ang2 += (targetAng2 - ang2) * speed;
 
