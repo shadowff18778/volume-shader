@@ -1,263 +1,256 @@
-<html lang="fr">
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Kernel 3D Crystal Fluid Edition</title>
-    <style>
-        body {
-            background: #000;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            touch-action: none; 
-            width: 100vw;
-            height: 100vh;
-        }
-
-        #c1 {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
-
-        #btn {
-            position: fixed;
-            left: 15px;
-            top: 15px;
-            z-index: 10;
-            padding: 10px 18px;
-            background: rgba(255, 255, 255, 0.02);
-            color: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 25px;
-            backdrop-filter: blur(10px);
-            font-family: sans-serif;
-            font-size: 11px;
-            cursor: pointer;
-        }
-
-        #config {
-            position: fixed;
-            left: 15px;
-            top: 70px;
-            display: none;
-            background: rgba(0, 0, 0, 0.98);
-            padding: 20px;
-            border-radius: 15px;
-            z-index: 10;
-            border: 1px solid rgba(0, 255, 170, 0.1);
-        }
-
-        textarea {
-            font-family: 'Consolas', monospace;
-            width: 85vw;
-            max-width: 380px;
-            height: 200px;
-            background: #000;
-            color: #00ffaa;
-            border: 1px solid #111;
-            padding: 12px;
-            font-size: 13px;
-            outline: none;
-        }
-        
-        .controls { margin-top: 15px; display: flex; gap: 10px; }
-        button.action { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
-        #apply { background: #00ffaa; color: #000; }
-        #cancle { background: #222; color: #fff; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="user-scalable=no,width=device-width,initial-scale=1.0">
+<title>volumeshader_bm_ultra_interactive</title>
+<style>
+body{margin:0;overflow:hidden;background:#131115}
+#main{position:fixed;left:0;top:0;transform-origin:0 0}
+#c1{display:block;background:#fbf7fe}
+</style>
 </head>
 
 <body>
-    <canvas id="c1"></canvas>
-    <button id="btn">PARAMÈTRES</button>
-    <div id="config">
-        <textarea id="kernel" spellcheck="false"></textarea>
-        <div class="controls">
-            <button id="apply" class="action">APPLIQUER</button>
-            <button id="cancle" class="action">ANNULER</button>
-        </div>
-    </div>
+<div id="main"><canvas id="c1"></canvas></div>
 
-    <script>
-        "use strict";
+<script>
+/* ================== STATE ================== */
+let gl,canvas,cx,cy;
+let ang1=2.8,ang2=0.4,len=1.6;
+let cenx=0,ceny=0,cenz=0;
 
-        let canvas, gl, shaderProgram;
-        let cx, cy, glLoc = {};
-        
-        const isHuawei = /huawei/i.test(navigator.userAgent);
-        
-        // Qualité visuelle : On force la netteté max sur Huawei aussi maintenant
-        const dpr = isHuawei ? Math.min(window.devicePixelRatio, 2.0) : 3.0; 
-        
-        // Pas : On utilise un système de raffinement pour le Huawei
-        const raySteps = isHuawei ? 100 : 600; 
-        
-        let mx = 0, my = 0, ml = 0;
-        let len = 2.8, ang1 = 2.8, ang2 = 0.4;
-        let targetAng1 = 2.8, targetAng2 = 0.4;
+/* interaction */
+let mx=0,my=0,mx1=0,my1=0;
+let ml=0,mr=0,lasttimen=0;
 
-        let KERNEL = `float kernal(vec3 ver){
-   float x = cos(1.0 / (ver.x*ver.x + 0.06));
-   float y = cos(1.0 / (ver.y*ver.y + 0.06));
-   float z = cos(1.0 / (ver.z*ver.z + 0.06));
-   return -x-y-z-1.2;
+/* ================== KERNEL ================== */
+let KERNEL=`float kernal(vec3 v){
+vec3 a=v;float b,c,d;
+for(int i=0;i<4;i++){
+b=dot(a,a);
+c=atan(a.y,a.x)*8.0;
+d=acos(a.z/sqrt(b))*8.0;
+b=pow(b,4.0);
+a=vec3(b*sin(d)*cos(c),b*sin(d)*sin(c),b*cos(d))+v;
+if(b>6.0)break;
+}
+return 4.0-dot(a,a);
 }`;
 
-        const VSHADER = `attribute vec2 position; varying vec2 vUv; void main() { vUv = position; gl_Position = vec4(position, 0.0, 1.0); }`;
+/* ================== SHADERS ================== */
+const VS=`
+precision mediump float;
+attribute vec4 position;
+uniform vec3 right,up,forward;
+uniform float x,y;
+varying vec3 dir,ld;
+void main(){
+gl_Position=position;
+ld=vec3(position.x*x,position.y*y,-1.0);
+dir=forward+right*ld.x+up*ld.y;
+}`;
 
-        const FSHADER_PREFIX = `
-            precision highp float;
-            uniform vec3 right, forward, up, origin;
-            uniform float len, aspectX, aspectY;
-            varying vec2 vUv;
-            
-            #define STEPS ${raySteps}
+const FS=`
+precision mediump float;
+#define SOLVER 4
+float kernal(vec3 v);
+uniform vec3 right,up,forward,origin;
+uniform float len;
+varying vec3 dir,ld;
+void main(){
+vec3 col=vec3(0.0);
+float step=0.0036;
+float v1=kernal(origin);
+float r=0.0;
+bool hit=false;
 
-            float kernal(vec3 ver);
+for(int k=1;k<420;k++){
+r=float(k)*step*len;
+vec3 p=origin+dir*r;
+if(dot(p,p)>32.0)break;
+float v=kernal(p);
+if(v>0.0 && v1<0.0){
+float a=r-step*len;
+float b=r;
+for(int i=0;i<SOLVER;i++){
+float m=0.5*(a+b);
+if(kernal(origin+dir*m)>0.0)b=m;else a=m;
+}
+r=0.5*(a+b);
+hit=true;
+break;
+}
+v1=v;
+}
 
-            void main() {
-                vec3 dir = normalize(forward + right * vUv.x * aspectX + up * vUv.y * aspectY);
-                vec3 p;
-                float t = 0.001 * len;
-                float v = 0.0;
-                bool hit = false;
+if(hit){
+vec3 p=origin+dir*r;
+float e=r*0.0004;
+vec3 n=vec3(
+kernal(p-right*e)-kernal(p+right*e),
+kernal(p-up*e)-kernal(p+up*e),
+kernal(p+forward*e)-kernal(p-forward*e)
+);
+n=normalize(n);
+vec3 v=normalize(ld);
+vec3 refl=v-2.0*dot(v,n)*n;
+float l=max(0.0,dot(refl,vec3(0.3,0.9,0.3)));
+float base=0.28+0.5*l*l*l+0.22*dot(n,vec3(0.3,0.9,0.3));
+float rr=dot(p,p);
+col=vec3(
+sin(rr*8.0)*0.5+0.5,
+sin(rr*8.0+2.1)*0.5+0.5,
+sin(rr*8.0-2.1)*0.5+0.5
+)*base;
+}
+gl_FragColor=vec4(col,1.0);
+}`;
 
-                // --- PHASE 1 : RECHERCHE RAPIDE ---
-                for(int i = 0; i < STEPS; i++) {
-                    p = origin + dir * t;
-                    v = kernal(p);
-                    if(v > 0.0) { 
-                        hit = true; 
-                        ${isHuawei ? `
-                        // Phase de raffinement Huawei : On recule un peu et on affine
-                        t -= 0.005 * len;
-                        for(int j=0; j<4; j++) {
-                           p = origin + dir * t;
-                           v = kernal(p);
-                           t += max(0.0005, v * 0.1) * len;
-                        }
-                        ` : ''}
-                        break; 
-                    }
-                    t += ${isHuawei ? 'max(0.01, abs(v) * 0.12)' : '0.0015'} * len; 
-                    if(t > 6.0 * len) break;
-                }
+/* ================== RESIZE ================== */
+function resize(){
+cx=cy=Math.min(innerWidth,innerHeight);
+const dpr=Math.min(devicePixelRatio,1.15);
+canvas.width=1024*dpr;
+canvas.height=1024*dpr;
+gl.viewport(0,0,canvas.width,canvas.height);
+document.getElementById("main").style.transform=
+`scale(${cx/1024},${cy/1024})`;
+}
 
-                vec3 color = vec3(0.001, 0.001, 0.003);
-                if(hit) {
-                    // Précision de surface identique : ultra lisse
-                    float e = 0.0004 * len;
-                    vec3 n = normalize(vec3(
-                        kernal(p - vec3(e, 0, 0)) - v,
-                        kernal(p - vec3(0, e, 0)) - v,
-                        kernal(p - vec3(0, 0, e)) - v
-                    ));
-                    vec3 lDir = normalize(vec3(0.5, 0.8, 0.6));
-                    float d = max(0.05, dot(n, lDir));
-                    
-                    // Rendu Premium
-                    color = mix(vec3(0.0), vec3(0.0, 0.75, 1.0), d + 0.1);
-                    float spec = pow(max(0.0, dot(reflect(dir, n), lDir)), 120.0);
-                    color += vec3(0.85, 0.95, 1.0) * spec;
-                }
-                gl_FragColor = vec4(color, 1.0);
-            }`;
+/* ================== INIT ================== */
+function init(){
+canvas=document.getElementById("c1");
+gl=canvas.getContext("webgl",{antialias:false,depth:false});
+resize();onresize=resize;
 
-        function initGL() {
-            canvas = document.getElementById('c1');
-            gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: "high-performance" });
-            if (!gl) return;
-            resize();
-            updateProgram(KERNEL);
-            const buf = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
-            setupInputListeners();
-            requestAnimationFrame(render);
-        }
+/* buffer */
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([
+-1,-1,0, 1,-1,0, 1,1,0,
+-1,-1,0, 1,1,0, -1,1,0
+]),gl.STATIC_DRAW);
 
-        function updateProgram(kSrc) {
-            const vs = compile(gl.VERTEX_SHADER, VSHADER);
-            const fs = compile(gl.FRAGMENT_SHADER, FSHADER_PREFIX + kSrc);
-            if(!vs || !fs) return;
-            const prog = gl.createProgram();
-            gl.attachShader(prog, vs); gl.attachShader(prog, fs);
-            gl.linkProgram(prog);
-            if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
-            gl.useProgram(prog);
-            shaderProgram = prog;
-            glLoc = {
-                pos: gl.getAttribLocation(prog, 'position'),
-                right: gl.getUniformLocation(prog, 'right'),
-                fwd: gl.getUniformLocation(prog, 'forward'),
-                up: gl.getUniformLocation(prog, 'up'),
-                orig: gl.getUniformLocation(prog, 'origin'),
-                aspX: gl.getUniformLocation(prog, 'aspectX'),
-                aspY: gl.getUniformLocation(prog, 'aspectY'),
-                len: gl.getUniformLocation(prog, 'len')
-            };
-            gl.enableVertexAttribArray(glLoc.pos);
-            gl.vertexAttribPointer(glLoc.pos, 2, gl.FLOAT, false, 0, 0);
-        }
+/* shaders */
+const vs=gl.createShader(gl.VERTEX_SHADER);
+const fs=gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(vs,VS);
+gl.shaderSource(fs,FS+KERNEL);
+gl.compileShader(vs);
+gl.compileShader(fs);
 
-        function compile(type, src) {
-            const s = gl.createShader(type);
-            gl.shaderSource(s, src); gl.compileShader(s);
-            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) return null;
-            return s;
-        }
+const p=gl.createProgram();
+gl.attachShader(p,vs);
+gl.attachShader(p,fs);
+gl.linkProgram(p);
+gl.useProgram(p);
 
-        function resize() {
-            cx = window.innerWidth; cy = window.innerHeight;
-            canvas.width = Math.floor(cx * dpr); canvas.height = Math.floor(cy * dpr);
-            gl.viewport(0, 0, canvas.width, canvas.height);
-        }
+/* attributes / uniforms */
+const pos=gl.getAttribLocation(p,"position");
+gl.enableVertexAttribArray(pos);
+gl.vertexAttribPointer(pos,3,gl.FLOAT,false,0,0);
 
-        function render() {
-            if (!glLoc.orig) { requestAnimationFrame(render); return; }
-            // RÉACTIVITÉ HAUTE PERFORMANCE : 0.5 sur Huawei (Instantanéité pure)
-            const speed = isHuawei ? 0.5 : 0.005;
-            ang1 += (targetAng1 - ang1) * speed;
-            ang2 += (targetAng2 - ang2) * speed;
+p.right=gl.getUniformLocation(p,"right");
+p.up=gl.getUniformLocation(p,"up");
+p.forward=gl.getUniformLocation(p,"forward");
+p.origin=gl.getUniformLocation(p,"origin");
+p.x=gl.getUniformLocation(p,"x");
+p.y=gl.getUniformLocation(p,"y");
+p.len=gl.getUniformLocation(p,"len");
 
-            const x = Math.cos(ang1) * Math.cos(ang2), y = Math.sin(ang2), z = Math.sin(ang1) * Math.cos(ang2);
-            gl.uniform1f(glLoc.aspX, cx * 1.5 / (cx + cy));
-            gl.uniform1f(glLoc.aspY, cy * 1.5 / (cx + cy));
-            gl.uniform1f(glLoc.len, len);
-            gl.uniform3f(glLoc.orig, len * x, len * y, len * z);
-            gl.uniform3f(glLoc.right, Math.sin(ang1), 0, -Math.cos(ang1));
-            gl.uniform3f(glLoc.up, -Math.sin(ang2) * Math.cos(ang1), Math.cos(ang2), -Math.sin(ang2) * Math.sin(ang1));
-            gl.uniform3f(glLoc.fwd, -x, -y, -z);
-            gl.drawArrays(gl.TRIANGLES, 0, 6);
-            requestAnimationFrame(render);
-        }
+/* render loop */
+function draw(){
+const inv=2/(cx+cy);
+gl.uniform1f(p.x,cx*inv);
+gl.uniform1f(p.y,cy*inv);
+gl.uniform1f(p.len,len);
+gl.uniform3f(p.origin,
+len*Math.cos(ang1)*Math.cos(ang2)+cenx,
+len*Math.sin(ang2)+ceny,
+len*Math.sin(ang1)*Math.cos(ang2)+cenz
+);
+gl.uniform3f(p.right,Math.sin(ang1),0,-Math.cos(ang1));
+gl.uniform3f(p.up,-Math.sin(ang2)*Math.cos(ang1),Math.cos(ang2),-Math.sin(ang2)*Math.sin(ang1));
+gl.uniform3f(p.forward,-Math.cos(ang1)*Math.cos(ang2),-Math.sin(ang2),-Math.sin(ang1)*Math.cos(ang2));
+gl.drawArrays(gl.TRIANGLES,0,6);
+}
 
-        function setupInputListeners() {
-            window.addEventListener('resize', resize);
-            const handleMove = (nx, ny) => {
-                targetAng1 += (nx - mx) * 0.007;
-                targetAng2 += (ny - my) * 0.007;
-                mx = nx; my = ny;
-            };
-            canvas.addEventListener('mousedown', e => { ml = 1; mx = e.clientX; my = e.clientY; });
-            window.addEventListener('mouseup', () => ml = 0);
-            window.addEventListener('mousemove', e => { if(ml) handleMove(e.clientX, e.clientY); });
-            canvas.addEventListener('touchstart', e => { mx = e.touches[0].clientX; my = e.touches[0].clientY; }, { passive: false });
-            canvas.addEventListener('touchmove', e => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
-        }
+function loop(){
+ang1+=0.0025;
+draw();
+requestAnimationFrame(loop);
+}
+loop();
+}
 
-        document.getElementById("kernel").value = KERNEL;
-        document.getElementById("btn").onclick = () => { document.getElementById("config").style.display = "block"; };
-        document.getElementById("apply").onclick = () => {
-            const val = document.getElementById("kernel").value;
-            updateProgram(val); KERNEL = val;
-            document.getElementById("config").style.display = "none";
-        };
-        document.getElementById("cancle").onclick = () => { document.getElementById("config").style.display = "none"; };
+/* ================== INTERACTIONS ================== */
+document.addEventListener("mousedown",e=>{
+if(e.button===0)ml=1;
+if(e.button===2)mr=1;
+mx=e.clientX;my=e.clientY;
+});
+document.addEventListener("mouseup",e=>{
+if(e.button===0)ml=0;
+if(e.button===2)mr=0;
+});
+document.addEventListener("mousemove",e=>{
+if(ml){
+ang1+=(e.clientX-mx)*0.002;
+ang2+=(e.clientY-my)*0.002;
+}
+if(mr){
+const l=len*4/(cx+cy);
+cenx+=l*(-(e.clientX-mx)*Math.sin(ang1)-(e.clientY-my)*Math.sin(ang2)*Math.cos(ang1));
+ceny+=l*((e.clientY-my)*Math.cos(ang2));
+cenz+=l*((e.clientX-mx)*Math.cos(ang1)-(e.clientY-my)*Math.sin(ang2)*Math.sin(ang1));
+}
+mx=e.clientX;my=e.clientY;
+});
+document.addEventListener("wheel",e=>{
+e.preventDefault();
+len*=Math.exp(-0.001*e.deltaY);
+},{passive:false});
 
-        window.onload = initGL;
-    </script>
+/* touch */
+document.addEventListener("touchstart",e=>{
+const t=e.touches;
+if(t.length===1){
+mx=t[0].clientX;my=t[0].clientY;
+}else if(t.length===2){
+mx=t[0].clientX;my=t[0].clientY;
+mx1=t[1].clientX;my1=t[1].clientY;
+}
+lasttimen=t.length;
+},{passive:false});
+
+document.addEventListener("touchmove",e=>{
+e.preventDefault();
+const t=e.touches;
+if(t.length===1 && lasttimen===1){
+ang1+=(t[0].clientX-mx)*0.002;
+ang2+=(t[0].clientY-my)*0.002;
+mx=t[0].clientX;my=t[0].clientY;
+}
+else if(t.length===2){
+const l=len*2/(cx+cy);
+cenx+=l*(-(t[0].clientX+t[1].clientX-mx-mx1)*Math.sin(ang1)
+-(t[0].clientY+t[1].clientY-my-my1)*Math.sin(ang2)*Math.cos(ang1));
+ceny+=l*((t[0].clientY+t[1].clientY-my-my1)*Math.cos(ang2));
+cenz+=l*((t[0].clientX+t[1].clientX-mx-mx1)*Math.cos(ang1)
+-(t[0].clientY+t[1].clientY-my-my1)*Math.sin(ang2)*Math.sin(ang1));
+const d0=Math.hypot(mx-mx1,my-my1)+1;
+mx=t[0].clientX;my=t[0].clientY;
+mx1=t[1].clientX;my1=t[1].clientY;
+const d1=Math.hypot(mx-mx1,my-my1)+1;
+len*=d0/d1;
+}
+lasttimen=t.length;
+},{passive:false});
+
+document.oncontextmenu=e=>e.preventDefault();
+
+onload=init;
+</script>
 </body>
 </html>
